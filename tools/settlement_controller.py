@@ -15,8 +15,8 @@ def settlement_controller(item,start_time,end_time):
             'request_amounts': [
                 {
                     'currency': leg,
-                    'from_address': 'BHS' if float(amount) <= 0 else curr_client_addresses[leg],
-                    'to_address': 'BHS' if float(amount) >= 0 else curr_client_addresses[leg],
+                    'from_address': 'BHS' if float(amount) <= 0 else curr_client_addresses.get(leg,f"No Address!"),
+                    'to_address': 'BHS' if float(amount) >= 0 else curr_client_addresses.get(leg,f"No Address!"),
                     'amount': amount.replace("-","")
                 }
                 for leg, amount in legs_to_be_settelled.items()
