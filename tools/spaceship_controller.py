@@ -4,13 +4,17 @@ from typing import Tuple, Dict, List
 
 import requests
 
+from tools.logger import FileLogger
+
+logger = FileLogger(__name__)
+
 
 class SpaceshipController:
     def __init__(self):
         self._url = f"https://api.uat.tradias.link"
         self.tradias_user_token = None
 
-    def get_client_token(self, client_id,client_token=None):
+    def get_client_token(self, client_id, client_token=None):
         if client_token != None:
             return client_token
         headers = {
@@ -20,11 +24,18 @@ class SpaceshipController:
                                           headers=headers).json()
         return self.client_token
 
-    def get_paginated_trades(self, client_id, start_time, end_time,client_token,env,user_token,spaceship_id) -> Tuple[Dict, List, str, str]:
+    def remove_one_day(self, dt_format, date_str):
+        removed_day_object = datetime.datetime.strptime(date_str, dt_format) - datetime.timedelta(days=1)
+        return removed_day_object.strftime(dt_format)
+
+    def get_paginated_trades(self, client_id, start_time, end_time, client_token, env, user_token, spaceship_id) -> \
+    Tuple[Dict, List, str, str]:
         # try:
-        print(f"FROM:{start_time}, TO:{end_time}")
+        start_time = self.remove_one_day(dt_format='%Y-%m-%dT%H:%M:%S.%fZ', date_str=start_time)
+        end_time = self.remove_one_day(dt_format='%Y-%m-%dT%H:%M:%S.%fZ', date_str=end_time)
+        logger.log_info(f"FROM:{start_time}, TO:{end_time}")
         trades = self.get_client_trades(spaceship_id, start_time, end_time, return_raw=True,
-                                        queries="limit=1000",user_token=user_token,env=env)
+                                        queries="limit=1000", user_token=user_token, env=env)
         if len(trades['items']) == 0:
             return {}, [], "", ""
         request_nb = 1
@@ -35,8 +46,9 @@ class SpaceshipController:
             start_date, end_date = min(trades_dates), max(trades_dates)
             return self.clean_response({"trades": paginated_trades, "start_date": start_date, "end_date": end_date})
         while trades['pagination']['limit'] + trades['pagination']['skip'] < trades['pagination']['total_count']:
-            trades = self.get_client_trades(spaceship_id,start_time, end_time, return_raw=True,
-                                            queries=f"skip={1000 * request_nb}&limit=1000",env=env,user_token=client_token)
+            trades = self.get_client_trades(spaceship_id, start_time, end_time, return_raw=True,
+                                            queries=f"skip={1000 * request_nb}&limit=1000", env=env,
+                                            user_token=client_token)
             paginated_trades = [*paginated_trades, *trades['items']]
             request_nb += 1
 
@@ -44,12 +56,13 @@ class SpaceshipController:
         start_date, end_date = min(trades_dates), max(trades_dates)
         return self.clean_response({"trades": paginated_trades, "start_date": start_date, "end_date": end_date})
 
-    def get_client_trades(self, client_id, from_datetime_str, to_datetime_str, return_raw=False, queries="",user_token=None,env=None):
+    def get_client_trades(self, client_id, from_datetime_str, to_datetime_str, return_raw=False, queries="",
+                          user_token=None, env=None):
         params = {
-            "start_date": str(datetime.datetime.strptime(from_datetime_str,"%Y-%m-%dT%H:%M:%S.%fZ").timestamp()),
-            "end_date": str(datetime.datetime.strptime(to_datetime_str,"%Y-%m-%dT%H:%M:%S.%fZ").timestamp()),
-            'any_leg':True,
-            'leg_1':client_id
+            "start_date": str(datetime.datetime.strptime(from_datetime_str, "%Y-%m-%dT%H:%M:%S.%fZ").timestamp()),
+            "end_date": str(datetime.datetime.strptime(to_datetime_str, "%Y-%m-%dT%H:%M:%S.%fZ").timestamp()),
+            'any_leg': True,
+            'leg_1': client_id
         }
         headers = {
             "Authorization": f"Bearer {user_token}"
@@ -61,7 +74,7 @@ class SpaceshipController:
 
         return self.clean_response(response)
 
-    def get_client_addresses(self, client_id,env,token):
+    def get_client_addresses(self, client_id, env, token):
         headers = {
             "Authorization": f"Bearer {token}"
         }
@@ -77,7 +90,7 @@ class SpaceshipController:
         }
         return client_addresses
 
-    def post_settlement_request(self, data,token,env):
+    def post_settlement_request(self, data, token, env):
         headers = {'Authorization': f'Bearer {token}'}
         return requests.post(f'https://api.{env}.tradias.link/api/settlement-requests', json=data, headers=headers)
 
@@ -96,7 +109,7 @@ class SpaceshipController:
                 Decimal(trade['leg_2_amount']))
             if leg_1_status == "Unknown" and leg_2_status == "Unknown":
                 legs_to_be_settelled[leg_1] = amt_leg_1 if leg_1 not in legs_to_be_settelled else format(
-                        Decimal(legs_to_be_settelled[leg_1]) + Decimal(amt_leg_1), '.100f').rstrip("0").rstrip(".")
+                    Decimal(legs_to_be_settelled[leg_1]) + Decimal(amt_leg_1), '.100f').rstrip("0").rstrip(".")
                 legs_to_be_settelled[leg_2] = amt_leg_2 if leg_2 not in legs_to_be_settelled else format(
                     Decimal(legs_to_be_settelled[leg_2]) + Decimal(amt_leg_2), '.100f').rstrip("0").rstrip(".")
                 trades.append(trade['id'])
